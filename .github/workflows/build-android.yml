@@ -122,6 +122,10 @@ jobs:
           godot --headless --path . --script res://tools/anim_bridge.gd
           ls -lh assets/anim_generated/
 
+      - name: Validate all GDScripts and Main scene
+        run: |
+          godot --headless --path . --script res://tools/validate_project.gd
+
       - name: Export Android Debug APK
         run: |
           mkdir -p build
