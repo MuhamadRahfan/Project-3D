@@ -1,0 +1,143 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_STATUS: "stable"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform & build-tools
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.1"
+
+      - name: Cache Godot binaries & export templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/godot-ci
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_STATUS }}-v1
+
+      - name: Download & install Godot ${{ env.GODOT_VERSION }}
+        run: |
+          mkdir -p ~/.cache/godot-ci ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}
+          GODOT_BIN_ZIP="$HOME/.cache/godot-ci/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_linux.x86_64.zip"
+          GODOT_TPZ="$HOME/.cache/godot-ci/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_export_templates.tpz"
+
+          if [ ! -f "$GODOT_BIN_ZIP" ]; then
+            curl -fSL -o "$GODOT_BIN_ZIP" \
+              "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_STATUS}/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_linux.x86_64.zip"
+          fi
+          if [ ! -f "$GODOT_TPZ" ]; then
+            curl -fSL -o "$GODOT_TPZ" \
+              "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_STATUS}/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_export_templates.tpz"
+          fi
+
+          unzip -oq "$GODOT_BIN_ZIP" -d "$HOME/godot-bin"
+          chmod +x "$HOME/godot-bin/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_linux.x86_64"
+          ln -sf "$HOME/godot-bin/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_linux.x86_64" "$HOME/godot-bin/godot"
+          echo "$HOME/godot-bin" >> $GITHUB_PATH
+
+          unzip -oq "$GODOT_TPZ" -d "$HOME/godot-tpz-tmp"
+          mv "$HOME/godot-tpz-tmp/templates/"* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}/"
+          rm -rf "$HOME/godot-tpz-tmp"
+          ls -la "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}/" | head -n 20
+
+      - name: Cache .godot/imported
+        uses: actions/cache@v4
+        with:
+          path: .godot/imported
+          key: godot-imported-${{ hashFiles('project.godot', 'assets/**') }}
+          restore-keys: |
+            godot-imported-
+
+      - name: Setup Android debug keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          mkdir -p android
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/debug.keystore
+            echo "generated=false" >> $GITHUB_OUTPUT
+            echo "Restored debug.keystore from ANDROID_DEBUG_KEYSTORE_B64 secret."
+          else
+            keytool -genkeypair -v \
+              -keystore android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10950 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            echo "generated=true" >> $GITHUB_OUTPUT
+            echo "Generated fresh debug.keystore (upload artifact to save secret)."
+          fi
+
+      - name: Upload generated debug keystore (first run only)
+        if: steps.keystore.outputs.generated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-keystore
+          path: android/debug.keystore
+
+      - name: Configure Godot EditorSettings for Android SDK & Keystore
+        run: |
+          godot --headless --quit || true
+          ls -la ~/.config/godot/ || true
+          python3 tools/ci_editor_settings.py
+
+      - name: Import Godot project assets
+        run: |
+          godot --headless --path . --import
+
+      - name: Run animation bridge & bone validator
+        run: |
+          godot --headless --path . --script res://tools/anim_bridge.gd
+          ls -lh assets/anim_generated/
+
+      - name: Export Android Debug APK
+        run: |
+          mkdir -p build
+          godot --headless --path . --export-debug "Android" build/BonefallGrove.apk
+          ls -lh build/BonefallGrove.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BonefallGrove-APK
+          path: build/BonefallGrove.apk
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG="mvp-v0.1.0-${SHORT_SHA}"
+          gh release create "$TAG" build/BonefallGrove.apk \
+            --title "Bonefall Grove ${TAG}" \
+            --notes "Automated debug APK build from commit ${GITHUB_SHA}."

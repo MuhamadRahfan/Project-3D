@@ -1,0 +1,7 @@
+.godot/
+build/
+*.apk
+*.aab
+android/*.keystore
+android/*.jks
+assets/anim_generated/*.res
