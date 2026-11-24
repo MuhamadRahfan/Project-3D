@@ -1,11 +1,11 @@
 extends SceneTree
 
-const RIG_DIR := "res://assets/rigs/"
-const HERO_DIR := "res://assets/heroes/"
-const ENEMY_DIR := "res://assets/enemies/"
-const OUT_DIR := "res://assets/anim_generated/"
+const RIG_DIR: String = "res://assets/rigs/"
+const HERO_DIR: String = "res://assets/heroes/"
+const ENEMY_DIR: String = "res://assets/enemies/"
+const OUT_DIR: String = "res://assets/anim_generated/"
 
-const RIG_FILES := [
+const RIG_FILES: Array[String] = [
 	"Rig_Medium_General.glb",
 	"Rig_Medium_MovementBasic.glb",
 	"Rig_Medium_MovementAdvanced.glb",
@@ -16,7 +16,7 @@ const RIG_FILES := [
 	"Rig_Medium_Tools.glb",
 ]
 
-const TARGET_CHARACTERS := {
+const TARGET_CHARACTERS: Dictionary = {
 	"Knight": HERO_DIR + "Knight.glb",
 	"Ranger": HERO_DIR + "Ranger.glb",
 	"Mage": HERO_DIR + "Mage.glb",
@@ -35,18 +35,18 @@ func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
 
 	var rig_animations: Dictionary = {}
-	var rig_bones_ref: PackedStringArray = PackedStringArray()
+	var rig_bones_ref := PackedStringArray()
 	var total_clips_found := 0
 
-	for rig_file in RIG_FILES:
-		var rig_path := RIG_DIR + rig_file
+	for rig_file: String in RIG_FILES:
+		var rig_path: String = RIG_DIR + rig_file
 		var packed := ResourceLoader.load(rig_path) as PackedScene
 		if packed == null:
 			push_error("Failed to load rig: " + rig_path)
 			continue
-		var rig_root := packed.instantiate()
-		var skel := _find_first_skeleton(rig_root)
-		var anim_player := _find_first_anim_player(rig_root)
+		var rig_root: Node = packed.instantiate()
+		var skel: Skeleton3D = _find_first_skeleton(rig_root)
+		var anim_player: AnimationPlayer = _find_first_anim_player(rig_root)
 
 		if skel == null or anim_player == null:
 			push_error("Missing Skeleton3D or AnimationPlayer in: " + rig_file)
@@ -62,14 +62,14 @@ func _initialize() -> void:
 				", ".join(rig_bones_ref)
 			])
 
-		var lib_list := anim_player.get_animation_library_list()
+		var lib_list: Array[StringName] = anim_player.get_animation_library_list()
 		var rig_anim_count := 0
 		var sample_tracks_printed := false
-		for lib_name in lib_list:
-			var lib := anim_player.get_animation_library(lib_name)
-			for anim_name in lib.get_animation_list():
-				var anim := lib.get_animation(anim_name)
-				var anim_key := String(anim_name)
+		for lib_name: StringName in lib_list:
+			var lib: AnimationLibrary = anim_player.get_animation_library(lib_name)
+			for anim_name: StringName in lib.get_animation_list():
+				var anim: Animation = lib.get_animation(anim_name)
+				var anim_key: String = String(anim_name)
 				if not sample_tracks_printed and anim.get_track_count() > 0:
 					var samples: Array[String] = []
 					for t in mini(3, anim.get_track_count()):
@@ -91,25 +91,26 @@ func _initialize() -> void:
 	print("\n[SUMMARY] Total unique animation clips collected: %d" % total_clips_found)
 
 	var all_ok := true
-	for char_name in TARGET_CHARACTERS.keys():
-		var char_path: String = TARGET_CHARACTERS[char_name]
+	for char_name_v in TARGET_CHARACTERS.keys():
+		var char_name: String = String(char_name_v)
+		var char_path: String = String(TARGET_CHARACTERS[char_name])
 		var packed := ResourceLoader.load(char_path) as PackedScene
 		if packed == null:
 			push_error("Failed to load character: " + char_path)
 			all_ok = false
 			continue
 
-		var char_root := packed.instantiate()
-		var skel := _find_first_skeleton(char_root)
+		var char_root: Node = packed.instantiate()
+		var skel: Skeleton3D = _find_first_skeleton(char_root)
 		if skel == null:
 			push_error("No Skeleton3D found in character: " + char_name)
 			char_root.free()
 			all_ok = false
 			continue
 
-		var rel_skel_path := String(char_root.get_path_to(skel))
-		var target_bones := _get_bone_names(skel)
-		var missing_from_target := _diff_bones(rig_bones_ref, target_bones)
+		var rel_skel_path: String = String(char_root.get_path_to(skel))
+		var target_bones: PackedStringArray = _get_bone_names(skel)
+		var missing_from_target: PackedStringArray = _diff_bones(rig_bones_ref, target_bones)
 		print("\n[TARGET] %-18s Skeleton3D='%s' bones(%d) missing_vs_rig=%s" % [
 			char_name,
 			rel_skel_path,
@@ -120,16 +121,17 @@ func _initialize() -> void:
 			print("  -> %s bone order: %s" % [char_name, ", ".join(target_bones)])
 
 		var out_lib := AnimationLibrary.new()
-		var unmatched_bones := {}
+		var unmatched_bones: Dictionary = {}
 		var remapped_tracks := 0
 		var skipped_tracks := 0
 
-		for anim_key in rig_animations.keys():
-			var src_anim: Animation = rig_animations[anim_key]
-			var dst_anim := src_anim.duplicate(true)
+		for anim_key_v in rig_animations.keys():
+			var anim_key: String = String(anim_key_v)
+			var src_anim := rig_animations[anim_key] as Animation
+			var dst_anim := src_anim.duplicate(true) as Animation
 			for i in range(dst_anim.get_track_count() - 1, -1, -1):
-				var t_path := dst_anim.track_get_path(i)
-				var bone_sub := t_path.get_concatenated_subnames()
+				var t_path: NodePath = dst_anim.track_get_path(i)
+				var bone_sub: String = t_path.get_concatenated_subnames()
 				if bone_sub == "":
 					skipped_tracks += 1
 					dst_anim.remove_track(i)
@@ -142,14 +144,14 @@ func _initialize() -> void:
 				remapped_tracks += 1
 			out_lib.add_animation(anim_key, dst_anim)
 
-		var out_path := OUT_DIR + char_name + ".res"
-		var err := ResourceSaver.save(out_lib, out_path)
+		var out_path: String = OUT_DIR + char_name + ".res"
+		var err: Error = ResourceSaver.save(out_lib, out_path)
 		if err != OK:
 			push_error("Failed to save %s (err=%d)" % [out_path, err])
 			all_ok = false
 		else:
 			var verify_lib := ResourceLoader.load(out_path) as AnimationLibrary
-			var v_count := verify_lib.get_animation_list().size() if verify_lib != null else -1
+			var v_count: int = verify_lib.get_animation_list().size() if verify_lib != null else -1
 			print("  -> Saved %s (%d anims, %d remapped tracks, %d non-bone tracks stripped, unmatched_bones=%d)" % [
 				out_path, v_count, remapped_tracks, skipped_tracks, unmatched_bones.size()
 			])
