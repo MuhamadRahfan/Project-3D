@@ -411,10 +411,11 @@ func trigger_skill() -> void:
 func _check_shield_charge_hits() -> void:
 	var dmg := base_damage * weapon_dmg_mult * 2.3
 	var enemies: Array = _arena_ref.get_active_enemies()
-	for e in enemies:
-		if not e.is_targetable():
+	for e_v in enemies:
+		var e := e_v as Enemy
+		if e == null or not e.is_targetable():
 			continue
-		var eid := e.get_instance_id()
+		var eid: int = e.get_instance_id()
 		if _charge_hit_ids.has(eid):
 			continue
 		var diff: Vector3 = e.global_position - global_position

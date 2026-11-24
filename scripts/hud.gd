@@ -5,7 +5,7 @@ signal dodge_pressed
 signal skill_pressed
 signal pause_menu_requested
 
-var joystick: VirtualJoystick = null
+var joystick: TouchJoystick = null
 
 var _hp_bar: ProgressBar = null
 var _hp_label: Label = null
@@ -155,7 +155,7 @@ func _build_ui() -> void:
 	root.add_child(_banner_label)
 
 	# Bottom-left virtual joystick
-	joystick = VirtualJoystick.new()
+	joystick = TouchJoystick.new()
 	joystick.anchor_top = 1.0
 	joystick.anchor_bottom = 1.0
 	joystick.offset_left = 20
